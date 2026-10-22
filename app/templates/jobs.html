@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Jobs - Job Cost Tracker{% endblock %}
+{% block content %}
+<div x-data="jobsApp()" x-init="load()">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Jobs</h1>
+        <button @click="showForm = !showForm" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm">
+            <span x-text="showForm ? 'Cancel' : '+ New Job'"></span>
+        </button>
+    </div>
+
+    <!-- Filters -->
+    <div class="flex gap-3 mb-4">
+        <select x-model="filter" @change="load()" class="rounded border-gray-300 shadow-sm px-3 py-1.5 border text-sm">
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="completed">Completed</option>
+            <option value="archived">Archived</option>
+        </select>
+    </div>
+
+    <!-- Create Form -->
+    <div x-show="showForm" x-cloak class="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 class="text-lg font-semibold mb-3">New Job</h2>
+        <div x-show="error" class="bg-red-50 text-red-700 p-3 rounded mb-3 text-sm" x-text="error"></div>
+        <form @submit.prevent="save()">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Customer *</span>
+                    <select x-model="form.customer_id" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                        <option value="">Select customer...</option>
+                        <template x-for="c in customers" :key="c.id">
+                            <option :value="c.id" x-text="c.name"></option>
+                        </template>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Title *</span>
+                    <input type="text" x-model="form.title" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Job Type</span>
+                    <select x-model="form.job_type" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                        <option value="hourly">Hourly</option>
+                        <option value="fixed_price">Fixed Price</option>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Hourly Rate ($)</span>
+                    <input type="number" step="0.01" x-model="form.hourly_rate" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border" placeholder="Inherits from customer">
+                </label>
+                <label class="block" x-show="form.job_type === 'fixed_price'">
+                    <span class="text-sm font-medium text-gray-700">Fixed Price ($)</span>
+                    <input type="number" step="0.01" x-model="form.fixed_price" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Budget ($)</span>
+                    <input type="number" step="0.01" x-model="form.budget" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Markup on Expenses (%)</span>
+                    <input type="number" step="0.01" x-model="form.markup_percent" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Internal Cost Rate ($)</span>
+                    <input type="number" step="0.01" x-model="form.internal_cost_rate" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border" placeholder="Inherits from customer">
+                </label>
+            </div>
+            <label class="block mt-4">
+                <span class="text-sm font-medium text-gray-700">Description</span>
+                <textarea x-model="form.description" rows="2" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border"></textarea>
+            </label>
+            <button type="submit" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm">Create Job</button>
+        </form>
+    </div>
+
+    <!-- Jobs List -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left">Title</th>
+                        <th class="px-4 py-3 text-left">Customer</th>
+                        <th class="px-4 py-3 text-left">Type</th>
+                        <th class="px-4 py-3 text-left">Status</th>
+                        <th class="px-4 py-3 text-right">Rate</th>
+                        <th class="px-4 py-3 text-right">Budget</th>
+                        <th class="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="j in jobs" :key="j.id">
+                        <tr class="border-b hover:bg-gray-50 cursor-pointer" @click="window.location.href='/jobs/'+j.id">
+                            <td class="px-4 py-3 font-medium" x-text="j.title"></td>
+                            <td class="px-4 py-3" x-text="customerName(j.customer_id)"></td>
+                            <td class="px-4 py-3 capitalize" x-text="j.job_type.replace('_',' ')"></td>
+                            <td class="px-4 py-3">
+                                <span class="px-2 py-0.5 rounded text-xs" :class="{
+                                    'bg-green-100 text-green-800': j.status === 'active',
+                                    'bg-blue-100 text-blue-800': j.status === 'completed',
+                                    'bg-gray-100 text-gray-600': j.status === 'archived'
+                                }" x-text="j.status"></span>
+                            </td>
+                            <td class="px-4 py-3 text-right" x-text="j.job_type === 'fixed_price' ? formatCurrency(j.fixed_price) + ' fixed' : formatCurrency(j.hourly_rate) + '/hr'"></td>
+                            <td class="px-4 py-3 text-right" x-text="j.budget ? formatCurrency(j.budget) : '--'"></td>
+                            <td class="px-4 py-3 text-right" @click.stop>
+                                <select @change="updateStatus(j.id, $event.target.value); $event.target.value = ''" class="rounded border-gray-300 text-xs px-1 py-0.5 border">
+                                    <option value="">Status...</option>
+                                    <option value="active">Active</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="archived">Archived</option>
+                                </select>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        <div x-show="jobs.length === 0" class="p-8 text-center text-gray-500">No jobs yet.</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function jobsApp() {
+    return {
+        jobs: [],
+        customers: [],
+        showForm: false,
+        filter: '',
+        error: '',
+        form: { customer_id: '', title: '', description: '', job_type: 'hourly', hourly_rate: null, internal_cost_rate: null, fixed_price: null, budget: null, markup_percent: 0 },
+
+        async load() {
+            let url = '/api/jobs';
+            if (this.filter) url += `?status=${this.filter}`;
+            [this.jobs, this.customers] = await Promise.all([
+                api(url),
+                api('/api/customers'),
+            ]);
+        },
+
+        customerName(id) {
+            const c = this.customers.find(c => c.id === id);
+            return c ? c.name : id;
+        },
+
+        async save() {
+            this.error = '';
+            try {
+                await api('/api/jobs', { method: 'POST', body: JSON.stringify(this.form) });
+                this.showForm = false;
+                await this.load();
+            } catch(e) { this.error = e.message; }
+        },
+
+        async updateStatus(id, status) {
+            if (!status) return;
+            await api(`/api/jobs/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+            await this.load();
+        },
+    };
+}
+</script>
+{% endblock %}

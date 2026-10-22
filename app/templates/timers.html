@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}Timers - Job Cost Tracker{% endblock %}
+{% block content %}
+<div x-data="timersApp()" x-init="load()">
+    <h1 class="text-2xl font-bold text-gray-900 mb-6">Time Tracking</h1>
+
+    <!-- Start Timer -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 class="text-lg font-semibold mb-3">Start Timer</h2>
+        <div x-show="error" class="bg-red-50 text-red-700 p-3 rounded mb-3 text-sm" x-text="error"></div>
+        <form @submit.prevent="start()" class="flex flex-wrap gap-3 items-end">
+            <label class="block flex-1 min-w-48">
+                <span class="text-sm font-medium text-gray-700">Job</span>
+                <select x-model="startForm.job_id" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                    <option value="">Select job...</option>
+                    <template x-for="j in activeJobs" :key="j.id">
+                        <option :value="j.id" x-text="j.title"></option>
+                    </template>
+                </select>
+            </label>
+            <label class="block flex-1 min-w-48">
+                <span class="text-sm font-medium text-gray-700">Notes</span>
+                <input type="text" x-model="startForm.notes" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border" placeholder="What are you working on?">
+            </label>
+            <label class="flex items-center gap-2 mt-6">
+                <input type="checkbox" x-model="startForm.is_billable" class="rounded">
+                <span class="text-sm">Billable</span>
+            </label>
+            <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Start</button>
+        </form>
+    </div>
+
+    <!-- Active Timers -->
+    <div class="bg-white rounded-lg shadow mb-6 p-4">
+        <h2 class="text-lg font-semibold mb-3">Active Timers</h2>
+        <div x-show="timers.length === 0" class="text-gray-500 text-sm">No active timers</div>
+        <template x-for="t in timers" :key="t.id">
+            <div class="flex items-center justify-between py-3 border-b last:border-0">
+                <div>
+                    <span class="font-medium" x-text="t.job_title"></span>
+                    <span class="text-gray-500 text-sm ml-2" x-text="t.customer_name"></span>
+                    <span class="text-gray-400 text-xs ml-2" x-text="t.notes || ''"></span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="font-mono text-2xl tabular-nums" x-text="formatElapsed(t)"></span>
+                    <div class="flex gap-2 items-center">
+                        <select x-model="stopRounding" class="rounded border-gray-300 text-xs px-1 py-1 border">
+                            <option value="none">No rounding</option>
+                            <option value="nearest_15">Nearest 15 min</option>
+                            <option value="nearest_6">Nearest 6 min</option>
+                            <option value="up_15">Round up 15 min</option>
+                        </select>
+                        <button @click="stop(t.id)" class="bg-red-600 text-white px-4 py-1.5 rounded hover:bg-red-700">Stop</button>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- Manual Entry -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 class="text-lg font-semibold mb-3">Manual Time Entry</h2>
+        <form @submit.prevent="addManual()" class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <label class="block">
+                <span class="text-sm font-medium text-gray-700">Job</span>
+                <select x-model="manualForm.job_id" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                    <option value="">Select job...</option>
+                    <template x-for="j in activeJobs" :key="j.id">
+                        <option :value="j.id" x-text="j.title"></option>
+                    </template>
+                </select>
+            </label>
+            <label class="block">
+                <span class="text-sm font-medium text-gray-700">Start Time</span>
+                <input type="datetime-local" x-model="manualForm.start_time" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+            </label>
+            <label class="block">
+                <span class="text-sm font-medium text-gray-700">End Time</span>
+                <input type="datetime-local" x-model="manualForm.end_time" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+            </label>
+            <label class="block">
+                <span class="text-sm font-medium text-gray-700">Notes</span>
+                <input type="text" x-model="manualForm.notes" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+            </label>
+            <label class="block">
+                <span class="text-sm font-medium text-gray-700">Rounding</span>
+                <select x-model="manualForm.rounding_rule" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                    <option value="none">No rounding</option>
+                    <option value="nearest_15">Nearest 15 min</option>
+                    <option value="nearest_6">Nearest 6 min</option>
+                    <option value="up_15">Round up 15 min</option>
+                </select>
+            </label>
+            <div class="flex items-end gap-3">
+                <label class="flex items-center gap-2">
+                    <input type="checkbox" x-model="manualForm.is_billable" class="rounded">
+                    <span class="text-sm">Billable</span>
+                </label>
+                <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Add Entry</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Recent Entries -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-4 py-3 border-b">
+            <h2 class="text-lg font-semibold">Recent Time Entries</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-2 text-left">Date</th>
+                        <th class="px-4 py-2 text-left">Job</th>
+                        <th class="px-4 py-2 text-right">Duration</th>
+                        <th class="px-4 py-2 text-right">Rounded</th>
+                        <th class="px-4 py-2 text-left">Billable</th>
+                        <th class="px-4 py-2 text-left">Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="e in entries" :key="e.id">
+                        <tr class="border-b">
+                            <td class="px-4 py-2 text-sm" x-text="formatDate(e.start_time)"></td>
+                            <td class="px-4 py-2" x-text="e.job_id"></td>
+                            <td class="px-4 py-2 text-right font-mono" x-text="formatDuration(e.duration_seconds)"></td>
+                            <td class="px-4 py-2 text-right font-mono" x-text="e.rounded_duration_seconds !== e.duration_seconds ? formatDuration(e.rounded_duration_seconds) : '--'"></td>
+                            <td class="px-4 py-2">
+                                <span class="text-xs px-2 py-0.5 rounded" :class="e.is_billable ? 'bg-green-100 text-green-800' : 'bg-gray-100'" x-text="e.is_billable ? 'Yes' : 'No'"></span>
+                            </td>
+                            <td class="px-4 py-2 text-gray-600" x-text="e.notes || ''"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function timersApp() {
+    return {
+        timers: [],
+        entries: [],
+        activeJobs: [],
+        error: '',
+        stopRounding: 'nearest_15',
+        startForm: { job_id: '', notes: '', is_billable: true },
+        manualForm: { job_id: '', start_time: '', end_time: '', notes: '', is_billable: true, rounding_rule: 'none' },
+        timerInterval: null,
+
+        async load() {
+            [this.timers, this.entries, this.activeJobs] = await Promise.all([
+                api('/api/timers/active'),
+                api('/api/timers/entries'),
+                api('/api/jobs?status=active'),
+            ]);
+            if (!this.timerInterval) {
+                this.timerInterval = setInterval(() => {
+                    this.timers = this.timers.map(t => ({...t, elapsed_seconds: (t.elapsed_seconds || 0) + 1}));
+                }, 1000);
+            }
+        },
+
+        formatElapsed(t) { return formatDuration(t.elapsed_seconds || 0); },
+
+        async start() {
+            this.error = '';
+            try {
+                await api('/api/timers/start', { method: 'POST', body: JSON.stringify(this.startForm) });
+                this.startForm = { job_id: '', notes: '', is_billable: true };
+                await this.load();
+            } catch(e) { this.error = e.message; }
+        },
+
+        async stop(id) {
+            try {
+                await api('/api/timers/stop', { method: 'POST', body: JSON.stringify({ timer_id: id, rounding_rule: this.stopRounding }) });
+                await this.load();
+            } catch(e) { alert(e.message); }
+        },
+
+        async addManual() {
+            this.error = '';
+            try {
+                const data = { ...this.manualForm };
+                if (data.start_time) data.start_time = new Date(data.start_time).toISOString();
+                if (data.end_time) data.end_time = new Date(data.end_time).toISOString();
+                await api('/api/timers/entries', { method: 'POST', body: JSON.stringify(data) });
+                this.manualForm = { job_id: '', start_time: '', end_time: '', notes: '', is_billable: true, rounding_rule: 'none' };
+                await this.load();
+            } catch(e) { this.error = e.message; }
+        },
+    };
+}
+</script>
+{% endblock %}

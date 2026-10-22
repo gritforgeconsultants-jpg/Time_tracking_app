@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Customers - Job Cost Tracker{% endblock %}
+{% block content %}
+<div x-data="customersApp()" x-init="load()">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Customers</h1>
+        <button @click="showForm = !showForm" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm">
+            <span x-text="showForm ? 'Cancel' : '+ New Customer'"></span>
+        </button>
+    </div>
+
+    <!-- Create Form -->
+    <div x-show="showForm" x-cloak class="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 class="text-lg font-semibold mb-3" x-text="editing ? 'Edit Customer' : 'New Customer'"></h2>
+        <div x-show="error" class="bg-red-50 text-red-700 p-3 rounded mb-3 text-sm" x-text="error"></div>
+        <form @submit.prevent="save()">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Name *</span>
+                    <input type="text" x-model="form.name" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Company</span>
+                    <input type="text" x-model="form.company" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Email</span>
+                    <input type="email" x-model="form.email" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Phone</span>
+                    <input type="text" x-model="form.phone" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Default Hourly Rate ($)</span>
+                    <input type="number" step="0.01" x-model="form.default_hourly_rate" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Internal Cost Rate ($)</span>
+                    <input type="number" step="0.01" x-model="form.default_internal_cost_rate" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+            </div>
+            <label class="block mt-4">
+                <span class="text-sm font-medium text-gray-700">Notes</span>
+                <textarea x-model="form.notes" rows="2" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border"></textarea>
+            </label>
+            <button type="submit" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm" x-text="editing ? 'Update' : 'Create'"></button>
+        </form>
+    </div>
+
+    <!-- Customer List -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left">Name</th>
+                        <th class="px-4 py-3 text-left">Company</th>
+                        <th class="px-4 py-3 text-left">Email</th>
+                        <th class="px-4 py-3 text-left">Phone</th>
+                        <th class="px-4 py-3 text-right">Hourly Rate</th>
+                        <th class="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="c in customers" :key="c.id">
+                        <tr class="border-b hover:bg-gray-50">
+                            <td class="px-4 py-3 font-medium" x-text="c.name"></td>
+                            <td class="px-4 py-3" x-text="c.company || '--'"></td>
+                            <td class="px-4 py-3" x-text="c.email || '--'"></td>
+                            <td class="px-4 py-3" x-text="c.phone || '--'"></td>
+                            <td class="px-4 py-3 text-right" x-text="formatCurrency(c.default_hourly_rate)"></td>
+                            <td class="px-4 py-3 text-right">
+                                <button @click="edit(c)" class="text-blue-600 hover:underline text-sm mr-2">Edit</button>
+                                <button @click="remove(c.id)" class="text-red-600 hover:underline text-sm">Delete</button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        <div x-show="customers.length === 0" class="p-8 text-center text-gray-500">No customers yet. Create one to get started.</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function customersApp() {
+    return {
+        customers: [],
+        showForm: false,
+        editing: null,
+        error: '',
+        form: { name: '', company: '', email: '', phone: '', default_hourly_rate: 0, default_internal_cost_rate: null, notes: '' },
+
+        async load() {
+            this.customers = await api('/api/customers');
+        },
+
+        resetForm() {
+            this.form = { name: '', company: '', email: '', phone: '', default_hourly_rate: 0, default_internal_cost_rate: null, notes: '' };
+            this.editing = null;
+            this.error = '';
+        },
+
+        edit(c) {
+            this.form = { ...c };
+            this.editing = c.id;
+            this.showForm = true;
+        },
+
+        async save() {
+            this.error = '';
+            try {
+                if (this.editing) {
+                    await api(`/api/customers/${this.editing}`, { method: 'PATCH', body: JSON.stringify(this.form) });
+                } else {
+                    await api('/api/customers', { method: 'POST', body: JSON.stringify(this.form) });
+                }
+                this.showForm = false;
+                this.resetForm();
+                await this.load();
+            } catch(e) { this.error = e.message; }
+        },
+
+        async remove(id) {
+            if (!confirm('Delete this customer and all their jobs?')) return;
+            await api(`/api/customers/${id}`, { method: 'DELETE' });
+            await this.load();
+        },
+    };
+}
+</script>
+{% endblock %}

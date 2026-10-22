@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Job Cost Tracker{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .nav-link { @apply px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white; }
+        .nav-active { @apply bg-gray-900 text-white; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    {% if user %}
+    <nav class="bg-gray-800 shadow" x-data="{ mobileOpen: false }">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-4">
+                    <a href="/" class="text-white font-bold text-lg">JobTracker</a>
+                    <div class="hidden md:flex gap-1">
+                        <a href="/" class="nav-link {% if request.url.path == '/' %}nav-active{% endif %}">Dashboard</a>
+                        <a href="/customers" class="nav-link {% if '/customers' in request.url.path %}nav-active{% endif %}">Customers</a>
+                        <a href="/jobs" class="nav-link {% if request.url.path == '/jobs' %}nav-active{% endif %}">Jobs</a>
+                        <a href="/timers" class="nav-link {% if '/timers' in request.url.path %}nav-active{% endif %}">Timers</a>
+                        <a href="/ai-usage" class="nav-link {% if '/ai-usage' in request.url.path %}nav-active{% endif %}">AI Usage</a>
+                        <a href="/subscriptions" class="nav-link {% if '/subscriptions' in request.url.path %}nav-active{% endif %}">Subscriptions</a>
+                        <a href="/verizon" class="nav-link {% if '/verizon' in request.url.path %}nav-active{% endif %}">Verizon</a>
+                        <a href="/reports" class="nav-link {% if '/reports' in request.url.path %}nav-active{% endif %}">Reports</a>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-gray-300 text-sm hidden md:block">{{ user.display_name }}</span>
+                    <button onclick="logout()" class="text-gray-300 hover:text-white text-sm">Logout</button>
+                    <button @click="mobileOpen = !mobileOpen" class="md:hidden text-gray-300">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div x-show="mobileOpen" x-cloak class="md:hidden px-2 pb-3 space-y-1">
+            <a href="/" class="block nav-link">Dashboard</a>
+            <a href="/customers" class="block nav-link">Customers</a>
+            <a href="/jobs" class="block nav-link">Jobs</a>
+            <a href="/timers" class="block nav-link">Timers</a>
+            <a href="/ai-usage" class="block nav-link">AI Usage</a>
+            <a href="/subscriptions" class="block nav-link">Subscriptions</a>
+            <a href="/verizon" class="block nav-link">Verizon</a>
+            <a href="/reports" class="block nav-link">Reports</a>
+        </div>
+    </nav>
+    {% endif %}
+
+    <main class="max-w-7xl mx-auto px-4 py-6">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="/static/js/app.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}AI Usage - Job Cost Tracker{% endblock %}
+{% block content %}
+<div x-data="aiUsageApp()" x-init="load()">
+    <h1 class="text-2xl font-bold text-gray-900 mb-6">AI API Usage</h1>
+
+    <!-- Provider Status -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <template x-for="p in providers" :key="p.name">
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="font-medium" x-text="p.display"></div>
+                <div class="text-sm mt-1" :class="p.api_connected ? 'text-green-600' : 'text-gray-400'" x-text="p.api_connected ? 'API Connected' : 'Not Connected'"></div>
+            </div>
+        </template>
+    </div>
+
+    <!-- Record Usage Form -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 class="text-lg font-semibold mb-3">Record API Usage</h2>
+        <p class="text-sm text-gray-500 mb-3">Log API calls manually or via the integration layer. Costs are calculated from the pricing table or can be overridden.</p>
+        <div x-show="error" class="bg-red-50 text-red-700 p-3 rounded mb-3 text-sm" x-text="error"></div>
+        <form @submit.prevent="recordUsage()">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Job</span>
+                    <select x-model="form.job_id" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                        <option value="">Select job...</option>
+                        <template x-for="j in jobs" :key="j.id">
+                            <option :value="j.id" x-text="j.title"></option>
+                        </template>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Provider</span>
+                    <select x-model="form.provider" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic</option>
+                        <option value="google">Google</option>
+                        <option value="xai">xAI</option>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Model</span>
+                    <input type="text" x-model="form.model" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border" placeholder="e.g., gpt-4o">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Input Tokens</span>
+                    <input type="number" x-model.number="form.input_tokens" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Output Tokens</span>
+                    <input type="number" x-model.number="form.output_tokens" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Cached Tokens</span>
+                    <input type="number" x-model.number="form.cached_tokens" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Provider Request ID</span>
+                    <input type="text" x-model="form.provider_request_id" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border" placeholder="For dedup">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Status</span>
+                    <select x-model="form.status" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                        <option value="success">Success</option>
+                        <option value="error">Error</option>
+                        <option value="partial">Partial</option>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Cost Override ($)</span>
+                    <input type="number" step="0.000001" x-model="form.calculated_cost" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border" placeholder="Leave empty to auto-calculate">
+                </label>
+            </div>
+            <button type="submit" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm">Record Usage</button>
+        </form>
+    </div>
+
+    <!-- Usage List -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-4 py-3 border-b flex justify-between items-center">
+            <h2 class="text-lg font-semibold">Recent API Usage</h2>
+            <select x-model="filterProvider" @change="loadUsage()" class="rounded border-gray-300 text-sm px-2 py-1 border">
+                <option value="">All Providers</option>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="google">Google</option>
+                <option value="xai">xAI</option>
+            </select>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-2 text-left">Timestamp</th>
+                        <th class="px-4 py-2 text-left">Provider</th>
+                        <th class="px-4 py-2 text-left">Model</th>
+                        <th class="px-4 py-2 text-right">Input</th>
+                        <th class="px-4 py-2 text-right">Output</th>
+                        <th class="px-4 py-2 text-right">Cached</th>
+                        <th class="px-4 py-2 text-right">Cost</th>
+                        <th class="px-4 py-2 text-left">Status</th>
+                        <th class="px-4 py-2 text-left">Reconciled</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="u in usage" :key="u.id">
+                        <tr class="border-b">
+                            <td class="px-4 py-2 text-sm" x-text="formatDate(u.timestamp)"></td>
+                            <td class="px-4 py-2 capitalize" x-text="u.provider"></td>
+                            <td class="px-4 py-2 font-mono text-xs" x-text="u.model"></td>
+                            <td class="px-4 py-2 text-right font-mono" x-text="u.input_tokens.toLocaleString()"></td>
+                            <td class="px-4 py-2 text-right font-mono" x-text="u.output_tokens.toLocaleString()"></td>
+                            <td class="px-4 py-2 text-right font-mono" x-text="u.cached_tokens.toLocaleString()"></td>
+                            <td class="px-4 py-2 text-right">
+                                <span x-text="'$' + parseFloat(u.calculated_cost).toFixed(4)"></span>
+                                <span x-show="u.cost_is_estimated" class="text-xs text-amber-600">(est)</span>
+                            </td>
+                            <td class="px-4 py-2">
+                                <span class="text-xs px-2 py-0.5 rounded" :class="{
+                                    'bg-green-100 text-green-800': u.status === 'success',
+                                    'bg-red-100 text-red-800': u.status === 'error',
+                                    'bg-yellow-100 text-yellow-800': u.status === 'partial'
+                                }" x-text="u.status"></span>
+                            </td>
+                            <td class="px-4 py-2">
+                                <span class="text-xs px-2 py-0.5 rounded" :class="u.reconciled ? 'bg-green-100 text-green-800' : 'bg-gray-100'" x-text="u.reconciled ? 'Yes' : 'No'"></span>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function aiUsageApp() {
+    return {
+        providers: [],
+        jobs: [],
+        usage: [],
+        filterProvider: '',
+        error: '',
+        form: {
+            job_id: '', provider: 'openai', model: '', input_tokens: 0, output_tokens: 0,
+            cached_tokens: 0, provider_request_id: '', status: 'success', calculated_cost: null,
+        },
+
+        async load() {
+            const [provResp, jobs, usage] = await Promise.all([
+                api('/api/ai/providers'),
+                api('/api/jobs?status=active'),
+                api('/api/ai/usage'),
+            ]);
+            this.providers = provResp.providers;
+            this.jobs = jobs;
+            this.usage = usage;
+        },
+
+        async loadUsage() {
+            let url = '/api/ai/usage';
+            if (this.filterProvider) url += `?provider=${this.filterProvider}`;
+            this.usage = await api(url);
+        },
+
+        async recordUsage() {
+            this.error = '';
+            try {
+                const data = { ...this.form };
+                if (!data.provider_request_id) data.provider_request_id = null;
+                if (!data.calculated_cost) data.calculated_cost = null;
+                await api('/api/ai/usage', { method: 'POST', body: JSON.stringify(data) });
+                this.form = {
+                    job_id: '', provider: 'openai', model: '', input_tokens: 0, output_tokens: 0,
+                    cached_tokens: 0, provider_request_id: '', status: 'success', calculated_cost: null,
+                };
+                await this.loadUsage();
+            } catch(e) { this.error = e.message; }
+        },
+    };
+}
+</script>
+{% endblock %}

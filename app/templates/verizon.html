@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}Verizon - Job Cost Tracker{% endblock %}
+{% block content %}
+<div x-data="verizonApp()" x-init="load()">
+    <h1 class="text-2xl font-bold text-gray-900 mb-6">Verizon Costs</h1>
+    <p class="text-sm text-gray-500 mb-4">Import Verizon billing CSVs. Assign call records to jobs by customer phone number or manual review. Call duration is tracked separately from labor time.</p>
+
+    <!-- Import -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 class="text-lg font-semibold mb-3">Import CSV</h2>
+        <div x-show="error" class="bg-red-50 text-red-700 p-3 rounded mb-3 text-sm" x-text="error"></div>
+        <form @submit.prevent="doImport()">
+            <div class="flex gap-3 items-end flex-wrap">
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">CSV File</span>
+                    <input type="file" accept=".csv" @change="file = $event.target.files[0]" required class="mt-1 block">
+                </label>
+                <button type="button" @click="preview()" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 text-sm">Preview</button>
+                <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm">Import</button>
+            </div>
+        </form>
+
+        <!-- Preview -->
+        <div x-show="previewData" x-cloak class="mt-4 p-3 bg-gray-50 rounded">
+            <div class="text-sm mb-2">
+                <strong x-text="previewData?.record_count + ' records'"></strong>,
+                Total charges: <strong x-text="'$' + (previewData?.total_charges || 0).toFixed(2)"></strong>
+            </div>
+            <div class="text-xs text-gray-500">
+                Columns found: <span x-text="(previewData?.columns_found || []).join(', ')"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Imports List -->
+    <div class="bg-white rounded-lg shadow mb-6">
+        <div class="px-4 py-3 border-b"><h2 class="text-lg font-semibold">Imports</h2></div>
+        <template x-for="i in imports" :key="i.id">
+            <div class="px-4 py-3 border-b flex justify-between items-center cursor-pointer hover:bg-gray-50" @click="selectedImport = i.id; loadCalls()">
+                <div>
+                    <span class="font-medium" x-text="i.filename"></span>
+                    <span class="text-gray-500 text-sm ml-2" x-text="i.record_count + ' records'"></span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span x-text="formatCurrency(i.total_amount)"></span>
+                    <span class="text-xs px-2 py-0.5 rounded" :class="{
+                        'bg-yellow-100 text-yellow-800': i.status === 'pending',
+                        'bg-blue-100 text-blue-800': i.status === 'reviewed',
+                        'bg-green-100 text-green-800': i.status === 'applied'
+                    }" x-text="i.status"></span>
+                </div>
+            </div>
+        </template>
+        <div x-show="imports.length === 0" class="p-4 text-center text-gray-500 text-sm">No imports yet</div>
+    </div>
+
+    <!-- Call Records -->
+    <div x-show="selectedImport" class="bg-white rounded-lg shadow mb-6">
+        <div class="px-4 py-3 border-b flex justify-between items-center">
+            <h2 class="text-lg font-semibold">Call Records</h2>
+            <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" x-model="showUnassigned" @change="loadCalls()" class="rounded">
+                Unassigned only
+            </label>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-2 text-left">Phone</th>
+                        <th class="px-4 py-2 text-left">Date</th>
+                        <th class="px-4 py-2 text-right">Duration</th>
+                        <th class="px-4 py-2 text-left">Type</th>
+                        <th class="px-4 py-2 text-right">Charge</th>
+                        <th class="px-4 py-2 text-left">Assign to Job</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="c in calls" :key="c.id">
+                        <tr class="border-b" :class="c.is_reviewed ? 'bg-green-50/30' : ''">
+                            <td class="px-4 py-2 font-mono" x-text="c.phone_number"></td>
+                            <td class="px-4 py-2" x-text="formatDate(c.call_date)"></td>
+                            <td class="px-4 py-2 text-right font-mono" x-text="formatDuration(c.duration_seconds)"></td>
+                            <td class="px-4 py-2" x-text="c.call_type || '--'"></td>
+                            <td class="px-4 py-2 text-right" x-text="'$' + parseFloat(c.charge_amount).toFixed(4)"></td>
+                            <td class="px-4 py-2">
+                                <select @change="assignCall(c.id, $event.target.value)" :value="c.job_id || ''" class="rounded border-gray-300 text-xs px-2 py-1 border w-full">
+                                    <option value="">Unassigned</option>
+                                    <template x-for="j in jobs" :key="j.id">
+                                        <option :value="j.id" x-text="j.title" :selected="j.id === c.job_id"></option>
+                                    </template>
+                                </select>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Plan Allocation -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <h2 class="text-lg font-semibold mb-3">Plan Cost Allocation</h2>
+        <p class="text-sm text-gray-500 mb-3">Allocate monthly plan costs to jobs. Total allocations per period cannot exceed 100% of the plan cost.</p>
+        <div x-show="planError" class="bg-red-50 text-red-700 p-3 rounded mb-3 text-sm" x-text="planError"></div>
+        <form @submit.prevent="allocatePlan()">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Job</span>
+                    <select x-model="planForm.job_id" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                        <option value="">Select...</option>
+                        <template x-for="j in jobs" :key="j.id">
+                            <option :value="j.id" x-text="j.title"></option>
+                        </template>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Plan Total ($)</span>
+                    <input type="number" step="0.01" x-model="planForm.plan_total" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Allocation %</span>
+                    <input type="number" step="0.01" max="100" x-model="planForm.allocation_percentage" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Period Start</span>
+                    <input type="date" x-model="planForm.period_start" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Period End</span>
+                    <input type="date" x-model="planForm.period_end" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <div class="flex items-end">
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm">Allocate</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function verizonApp() {
+    return {
+        imports: [], calls: [], jobs: [],
+        file: null, previewData: null,
+        selectedImport: null, showUnassigned: false,
+        error: '', planError: '',
+        planForm: { job_id: '', plan_total: '', allocation_percentage: '', period_start: '', period_end: '' },
+
+        async load() {
+            [this.imports, this.jobs] = await Promise.all([
+                api('/api/verizon/imports'),
+                api('/api/jobs?status=active'),
+            ]);
+        },
+
+        async preview() {
+            if (!this.file) return;
+            const fd = new FormData();
+            fd.append('file', this.file);
+            this.previewData = await fetch('/api/verizon/preview', { method: 'POST', body: fd }).then(r => r.json());
+        },
+
+        async doImport() {
+            this.error = '';
+            if (!this.file) { this.error = 'Select a file'; return; }
+            try {
+                const fd = new FormData();
+                fd.append('file', this.file);
+                await fetch('/api/verizon/import', { method: 'POST', body: fd }).then(async r => {
+                    if (!r.ok) throw new Error((await r.json()).detail);
+                });
+                this.file = null;
+                this.previewData = null;
+                await this.load();
+            } catch(e) { this.error = e.message; }
+        },
+
+        async loadCalls() {
+            let url = `/api/verizon/calls?import_id=${this.selectedImport}`;
+            if (this.showUnassigned) url += '&unassigned=true';
+            this.calls = await api(url);
+        },
+
+        async assignCall(callId, jobId) {
+            await api(`/api/verizon/calls/${callId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ job_id: jobId || null, is_reviewed: true }),
+            });
+        },
+
+        async allocatePlan() {
+            this.planError = '';
+            try {
+                const data = { ...this.planForm };
+                data.period_start = new Date(data.period_start).toISOString();
+                data.period_end = new Date(data.period_end).toISOString();
+                data.plan_total = parseFloat(data.plan_total);
+                data.allocation_percentage = parseFloat(data.allocation_percentage);
+                await api('/api/verizon/plan-allocations', { method: 'POST', body: JSON.stringify(data) });
+                this.planForm = { job_id: '', plan_total: '', allocation_percentage: '', period_start: '', period_end: '' };
+            } catch(e) { this.planError = e.message; }
+        },
+    };
+}
+</script>
+{% endblock %}

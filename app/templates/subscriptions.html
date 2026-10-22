@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}Subscriptions - Job Cost Tracker{% endblock %}
+{% block content %}
+<div x-data="subsApp()" x-init="load()">
+    <h1 class="text-2xl font-bold text-gray-900 mb-6">AI Subscriptions</h1>
+    <p class="text-sm text-gray-500 mb-4">Track website/app subscriptions (ChatGPT Plus, Claude Pro, etc.) and allocate costs to jobs. Subscription costs are kept separate from metered API costs.</p>
+
+    <!-- Add Subscription -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 class="text-lg font-semibold mb-3">Add Subscription</h2>
+        <div x-show="error" class="bg-red-50 text-red-700 p-3 rounded mb-3 text-sm" x-text="error"></div>
+        <form @submit.prevent="addSub()">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Provider</span>
+                    <select x-model="subForm.provider" class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                        <option value="OpenAI">OpenAI / ChatGPT</option>
+                        <option value="Anthropic">Anthropic / Claude</option>
+                        <option value="Google">Google / Gemini</option>
+                        <option value="xAI">xAI / Grok</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Plan Name</span>
+                    <input type="text" x-model="subForm.plan_name" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border" placeholder="e.g., ChatGPT Plus">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Monthly Cost ($)</span>
+                    <input type="number" step="0.01" x-model="subForm.monthly_cost" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <div class="flex items-end">
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm">Add</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Subscriptions List -->
+    <div class="bg-white rounded-lg shadow mb-6">
+        <div class="px-4 py-3 border-b"><h2 class="text-lg font-semibold">Active Subscriptions</h2></div>
+        <template x-for="s in subs" :key="s.id">
+            <div class="px-4 py-3 border-b flex justify-between items-center">
+                <div>
+                    <span class="font-medium" x-text="s.provider"></span>
+                    <span class="text-gray-600 ml-2" x-text="s.plan_name"></span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="font-medium" x-text="formatCurrency(s.monthly_cost) + '/mo'"></span>
+                    <span class="text-xs px-2 py-0.5 rounded" :class="s.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100'" x-text="s.status"></span>
+                </div>
+            </div>
+        </template>
+        <div x-show="subs.length === 0" class="p-4 text-center text-gray-500 text-sm">No subscriptions</div>
+    </div>
+
+    <!-- Allocate to Job -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 class="text-lg font-semibold mb-3">Allocate Subscription to Job</h2>
+        <p class="text-sm text-gray-500 mb-3">Allocate a percentage of a subscription's monthly cost to a job. Total allocations per subscription per period cannot exceed 100%.</p>
+        <div x-show="allocError" class="bg-red-50 text-red-700 p-3 rounded mb-3 text-sm" x-text="allocError"></div>
+        <form @submit.prevent="allocate()">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Subscription</span>
+                    <select x-model="allocForm.subscription_id" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                        <option value="">Select...</option>
+                        <template x-for="s in subs" :key="s.id">
+                            <option :value="s.id" x-text="s.provider + ' - ' + s.plan_name"></option>
+                        </template>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Job</span>
+                    <select x-model="allocForm.job_id" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                        <option value="">Select...</option>
+                        <template x-for="j in jobs" :key="j.id">
+                            <option :value="j.id" x-text="j.title"></option>
+                        </template>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Allocation %</span>
+                    <input type="number" step="0.01" min="0.01" max="100" x-model="allocForm.allocation_percentage" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Period Start</span>
+                    <input type="date" x-model="allocForm.period_start" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Period End</span>
+                    <input type="date" x-model="allocForm.period_end" required class="mt-1 block w-full rounded border-gray-300 shadow-sm px-3 py-2 border">
+                </label>
+                <div class="flex items-end">
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm">Allocate</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Allocations List -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-4 py-3 border-b"><h2 class="text-lg font-semibold">Allocations</h2></div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-2 text-left">Subscription</th>
+                        <th class="px-4 py-2 text-left">Job</th>
+                        <th class="px-4 py-2 text-left">Period</th>
+                        <th class="px-4 py-2 text-right">%</th>
+                        <th class="px-4 py-2 text-right">Amount</th>
+                        <th class="px-4 py-2 text-left">Billed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="a in allocs" :key="a.id">
+                        <tr class="border-b">
+                            <td class="px-4 py-2" x-text="subName(a.subscription_id)"></td>
+                            <td class="px-4 py-2" x-text="jobName(a.job_id)"></td>
+                            <td class="px-4 py-2 text-sm" x-text="a.period_start?.split('T')[0] + ' to ' + a.period_end?.split('T')[0]"></td>
+                            <td class="px-4 py-2 text-right" x-text="a.allocation_percentage + '%'"></td>
+                            <td class="px-4 py-2 text-right" x-text="formatCurrency(a.allocated_amount)"></td>
+                            <td class="px-4 py-2">
+                                <span class="text-xs px-2 py-0.5 rounded" :class="a.is_billed ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'" x-text="a.is_billed ? 'Yes' : 'No'"></span>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function subsApp() {
+    return {
+        subs: [], jobs: [], allocs: [],
+        error: '', allocError: '',
+        subForm: { provider: 'OpenAI', plan_name: '', monthly_cost: null },
+        allocForm: { subscription_id: '', job_id: '', allocation_percentage: '', period_start: '', period_end: '' },
+
+        async load() {
+            [this.subs, this.jobs, this.allocs] = await Promise.all([
+                api('/api/subscriptions'),
+                api('/api/jobs?status=active'),
+                api('/api/subscriptions/allocations'),
+            ]);
+        },
+
+        subName(id) { const s = this.subs.find(s => s.id === id); return s ? s.provider + ' ' + s.plan_name : id; },
+        jobName(id) { const j = this.jobs.find(j => j.id === id); return j ? j.title : id; },
+
+        async addSub() {
+            this.error = '';
+            try {
+                await api('/api/subscriptions', { method: 'POST', body: JSON.stringify(this.subForm) });
+                this.subForm = { provider: 'OpenAI', plan_name: '', monthly_cost: null };
+                await this.load();
+            } catch(e) { this.error = e.message; }
+        },
+
+        async allocate() {
+            this.allocError = '';
+            try {
+                const data = { ...this.allocForm };
+                data.period_start = new Date(data.period_start).toISOString();
+                data.period_end = new Date(data.period_end).toISOString();
+                data.allocation_percentage = parseFloat(data.allocation_percentage);
+                await api('/api/subscriptions/allocations', { method: 'POST', body: JSON.stringify(data) });
+                this.allocForm = { subscription_id: '', job_id: '', allocation_percentage: '', period_start: '', period_end: '' };
+                await this.load();
+            } catch(e) { this.allocError = e.message; }
+        },
+    };
+}
+</script>
+{% endblock %}

@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Job Cost Tracker{% endblock %}
+{% block content %}
+<div x-data="dashboardApp()" x-init="load()">
+    <h1 class="text-2xl font-bold text-gray-900 mb-6">Dashboard</h1>
+
+    <!-- Active Timers -->
+    <div class="bg-white rounded-lg shadow mb-6 p-4">
+        <h2 class="text-lg font-semibold mb-3">Active Timers</h2>
+        <div x-show="timers.length === 0" class="text-gray-500 text-sm">No active timers</div>
+        <template x-for="t in timers" :key="t.id">
+            <div class="flex items-center justify-between py-2 border-b last:border-0">
+                <div>
+                    <span class="font-medium" x-text="t.job_title"></span>
+                    <span class="text-gray-500 text-sm ml-2" x-text="t.customer_name"></span>
+                    <span class="ml-2 text-xs px-2 py-0.5 rounded" :class="t.is_billable ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'" x-text="t.is_billable ? 'Billable' : 'Non-billable'"></span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="font-mono text-lg" x-text="formatElapsed(t)"></span>
+                    <button @click="stopTimer(t.id)" class="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700">Stop</button>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="text-sm text-gray-500">Active Jobs</div>
+            <div class="text-2xl font-bold" x-text="data.active_jobs || 0"></div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="text-sm text-gray-500">Total Revenue</div>
+            <div class="text-2xl font-bold" x-text="formatCurrency(totalRevenue)"></div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="text-sm text-gray-500">Total Profit</div>
+            <div class="text-2xl font-bold" x-text="formatCurrency(totalProfit)"></div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="text-sm text-gray-500">Unassigned Calls</div>
+            <div class="text-2xl font-bold" :class="data.unassigned_verizon_calls > 0 ? 'text-amber-600' : ''" x-text="data.unassigned_verizon_calls || 0"></div>
+        </div>
+    </div>
+
+    <!-- Budget Alerts -->
+    <template x-if="data.budget_alerts && data.budget_alerts.length > 0">
+        <div class="bg-amber-50 border-l-4 border-amber-500 rounded-lg p-4 mb-6">
+            <h3 class="font-semibold text-amber-800 mb-2">Budget Alerts</h3>
+            <template x-for="a in data.budget_alerts" :key="a.job_id">
+                <div class="text-sm text-amber-700 mb-1">
+                    <span x-text="a.job_title"></span>:
+                    <span x-text="formatCurrency(a.remaining)"></span> remaining
+                    (<span x-text="a.remaining_pct + '%'"></span>)
+                </div>
+            </template>
+        </div>
+    </template>
+
+    <!-- Job Summaries -->
+    <div class="bg-white rounded-lg shadow mb-6">
+        <div class="px-4 py-3 border-b">
+            <h2 class="text-lg font-semibold">Active Job Costs</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-2 text-left">Job</th>
+                        <th class="px-4 py-2 text-left">Customer</th>
+                        <th class="px-4 py-2 text-right">Hours</th>
+                        <th class="px-4 py-2 text-right">Labor</th>
+                        <th class="px-4 py-2 text-right">API Costs</th>
+                        <th class="px-4 py-2 text-right">Other</th>
+                        <th class="px-4 py-2 text-right">Charge</th>
+                        <th class="px-4 py-2 text-right">Profit</th>
+                        <th class="px-4 py-2 text-right">Margin</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="j in data.job_summaries || []" :key="j.job_id">
+                        <tr class="border-b hover:bg-gray-50 cursor-pointer" @click="window.location.href='/jobs/'+j.job_id">
+                            <td class="px-4 py-2 font-medium" x-text="j.job_title"></td>
+                            <td class="px-4 py-2" x-text="j.customer_name"></td>
+                            <td class="px-4 py-2 text-right" x-text="parseFloat(j.billable_hours).toFixed(2)"></td>
+                            <td class="px-4 py-2 text-right" x-text="formatCurrency(j.billable_labor)"></td>
+                            <td class="px-4 py-2 text-right" x-text="formatCurrency(j.api_costs)"></td>
+                            <td class="px-4 py-2 text-right" x-text="formatCurrency(parseFloat(j.subscription_costs||0) + parseFloat(j.phone_costs||0))"></td>
+                            <td class="px-4 py-2 text-right font-medium" x-text="formatCurrency(j.customer_charge)"></td>
+                            <td class="px-4 py-2 text-right" :class="parseFloat(j.profit) >= 0 ? 'text-green-600' : 'text-red-600'" x-text="formatCurrency(j.profit)"></td>
+                            <td class="px-4 py-2 text-right" x-text="j.margin_percent != null ? j.margin_percent + '%' : '--'"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Provider Spending -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <h2 class="text-lg font-semibold mb-3">AI Provider Spending</h2>
+        <div x-show="!data.provider_spending || data.provider_spending.length === 0" class="text-gray-500 text-sm">No API usage recorded</div>
+        <template x-for="p in data.provider_spending || []" :key="p.provider">
+            <div class="flex justify-between py-2 border-b last:border-0">
+                <div>
+                    <span class="font-medium capitalize" x-text="p.provider"></span>
+                    <span class="text-gray-500 text-sm ml-2">(<span x-text="p.request_count"></span> requests)</span>
+                </div>
+                <span class="font-medium" x-text="formatCurrency(p.total_cost)"></span>
+            </div>
+        </template>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function dashboardApp() {
+    return {
+        data: {},
+        timers: [],
+        timerInterval: null,
+
+        get totalRevenue() {
+            return (this.data.job_summaries || []).reduce((s, j) => s + parseFloat(j.customer_charge || 0), 0);
+        },
+        get totalProfit() {
+            return (this.data.job_summaries || []).reduce((s, j) => s + parseFloat(j.profit || 0), 0);
+        },
+
+        async load() {
+            try {
+                [this.data, this.timers] = await Promise.all([
+                    api('/api/reports/dashboard'),
+                    api('/api/timers/active'),
+                ]);
+            } catch(e) { console.error(e); }
+            this.timerInterval = setInterval(() => {
+                this.timers = this.timers.map(t => ({...t, elapsed_seconds: (t.elapsed_seconds || 0) + 1}));
+            }, 1000);
+        },
+
+        formatElapsed(t) {
+            return formatDuration(t.elapsed_seconds || 0);
+        },
+
+        async stopTimer(id) {
+            try {
+                await api('/api/timers/stop', {
+                    method: 'POST',
+                    body: JSON.stringify({ timer_id: id, rounding_rule: 'nearest_15' }),
+                });
+                this.timers = this.timers.filter(t => t.id !== id);
+                this.data = await api('/api/reports/dashboard');
+            } catch(e) { alert(e.message); }
+        },
+    };
+}
+</script>
+{% endblock %}
